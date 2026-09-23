@@ -1,0 +1,226 @@
+name: Publier automatiquement le Module Cartes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-cards.yml"
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-cards
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPOSITORY: Berrylium-Baldoon/endgame-factory-workshop
+  SOURCE_REF: feature/card-editor
+  RELEASE_REPOSITORY: Berrylium-Baldoon/endgame-factory-workshop-releases
+
+jobs:
+  publish:
+    name: Construire, publier et vérifier Cartes
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Extraire le dépôt public
+        uses: actions/checkout@v4
+        with:
+          path: distribution
+
+      - name: Extraire le code du Module Cartes
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.SOURCE_REF }}
+          path: source
+
+      - name: Déterminer l’unique version de Cartes
+        id: metadata
+        shell: pwsh
+        run: |
+          $package = Get-Content "source/package.json" -Raw | ConvertFrom-Json
+          $rawVersion = [string]$package.version
+          if ($rawVersion -notmatch '-v(?<version>\d+(?:\.\d+)+)$') {
+            throw "Version Cartes introuvable dans package.json : $rawVersion"
+          }
+          $version = $Matches.version
+          $fileName = "EF-Workshop-Cartes-v$version.exe"
+          $tag = "cards-v$version"
+          $downloadUrl = "https://github.com/$env:RELEASE_REPOSITORY/releases/download/$tag/$fileName"
+          "version=$version" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "file_name=$fileName" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "download_url=$downloadUrl" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Vérifier si la release existe déjà
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+        run: |
+          gh release view $env:TAG --repo $env:RELEASE_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "Release existante : $env:TAG"
+          } else {
+            "exists=false" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "Release à créer : $env:TAG"
+          }
+
+      - name: Installer Node.js
+        if: steps.release.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Installer Rust
+        if: steps.release.outputs.exists == 'false'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restaurer le cache Rust
+        if: steps.release.outputs.exists == 'false'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: source/src-tauri -> target
+
+      - name: Installer les dépendances
+        if: steps.release.outputs.exists == 'false'
+        working-directory: source
+        run: npm ci
+
+      - name: Tester le Module Cartes
+        if: steps.release.outputs.exists == 'false'
+        working-directory: source
+        run: npm test
+
+      - name: Construire l’EXE Windows
+        if: steps.release.outputs.exists == 'false'
+        working-directory: source
+        run: npm run tauri build -- --no-bundle
+
+      - name: Préparer l’EXE versionné
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+        run: |
+          New-Item -ItemType Directory -Force -Path published | Out-Null
+          $sourceExe = "source/src-tauri/target/release/endgame-factory-workshop.exe"
+          $destination = "published/$env:FILE_NAME"
+          if (!(Test-Path $sourceExe -PathType Leaf)) { throw "EXE compilé introuvable : $sourceExe" }
+          Copy-Item $sourceExe $destination -Force
+          if ((Get-Item $destination).Length -le 0) { throw "EXE compilé vide" }
+
+      - name: Créer la release et publier l’EXE
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+        run: |
+          gh release create $env:TAG "published/$env:FILE_NAME" --repo $env:RELEASE_REPOSITORY --title "Module Cartes v$env:VERSION" --notes "Build Windows public du Module Cartes v$env:VERSION pour installation depuis EndGame Factory Workshop."
+          if ($LASTEXITCODE -ne 0) { throw "Échec de la création de la release publique" }
+
+      - name: Récupérer l’asset réellement publié
+        if: steps.release.outputs.exists == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+        run: |
+          New-Item -ItemType Directory -Force -Path published | Out-Null
+          gh release download $env:TAG --repo $env:RELEASE_REPOSITORY --pattern $env:FILE_NAME --dir published --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Impossible de récupérer l'asset de la release existante" }
+
+      - name: Calculer les métadonnées depuis l’asset publié
+        id: artifact
+        shell: pwsh
+        env:
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+        run: |
+          $asset = Get-Item "published/$env:FILE_NAME"
+          if ($asset.Length -le 0) { throw "Asset public vide" }
+          $sha256 = (Get-FileHash $asset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "size=$($asset.Length)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha256=$sha256" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Asset vérifié : $($asset.Name), $($asset.Length) octets, SHA-256 $sha256"
+
+      - name: Générer le manifest depuis l’asset publié
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+          DOWNLOAD_URL: ${{ steps.metadata.outputs.download_url }}
+          SIZE: ${{ steps.artifact.outputs.size }}
+          SHA256: ${{ steps.artifact.outputs.sha256 }}
+        run: |
+          $path = "distribution/manifests/cards.json"
+          $manifest = Get-Content $path -Raw | ConvertFrom-Json
+          $manifest.version = $env:VERSION
+          $manifest.fileName = $env:FILE_NAME
+          $manifest.size = [int64]$env:SIZE
+          $manifest.sha256 = $env:SHA256
+          $manifest.source.downloadUrl = $env:DOWNLOAD_URL
+          $json = $manifest | ConvertTo-Json -Depth 10
+          [IO.File]::WriteAllText((Resolve-Path $path), $json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+
+      - name: Publier le manifest après la release
+        shell: pwsh
+        working-directory: distribution
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifests/cards.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Manifest public déjà à jour."
+          } else {
+            git commit -m "Publier automatiquement Cartes v${{ steps.metadata.outputs.version }}"
+            git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { throw "Échec du push du manifest public" }
+          }
+
+      - name: Vérifier la publication publique de bout en bout
+        shell: pwsh
+        env:
+          TAG: ${{ steps.metadata.outputs.tag }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          FILE_NAME: ${{ steps.metadata.outputs.file_name }}
+          DOWNLOAD_URL: ${{ steps.metadata.outputs.download_url }}
+          EXPECTED_SIZE: ${{ steps.artifact.outputs.size }}
+          EXPECTED_SHA256: ${{ steps.artifact.outputs.sha256 }}
+        run: |
+          $releaseApi = "https://api.github.com/repos/$env:RELEASE_REPOSITORY/releases/tags/$env:TAG"
+          $release = Invoke-RestMethod $releaseApi -Headers @{ "User-Agent" = "EF-Workshop-Publisher" }
+          $asset = @($release.assets | Where-Object { $_.name -eq $env:FILE_NAME })
+          if ($asset.Count -ne 1) { throw "Asset public absent ou dupliqué dans la release" }
+          if ([int64]$asset[0].size -ne [int64]$env:EXPECTED_SIZE) { throw "Taille API de l'asset incorrecte" }
+
+          $manifestUrl = "https://raw.githubusercontent.com/$env:RELEASE_REPOSITORY/main/manifests/cards.json?run=$env:GITHUB_RUN_ID"
+          $manifest = Invoke-RestMethod $manifestUrl -Headers @{ "User-Agent" = "EF-Workshop-Publisher" }
+          if ($manifest.version -ne $env:VERSION) { throw "Version publique incorrecte" }
+          if ($manifest.fileName -ne $env:FILE_NAME) { throw "Nom public incorrect" }
+          if ([int64]$manifest.size -ne [int64]$env:EXPECTED_SIZE) { throw "Taille du manifest incorrecte" }
+          if ($manifest.sha256 -ne $env:EXPECTED_SHA256) { throw "SHA-256 du manifest incorrect" }
+          if ($manifest.source.downloadUrl -ne $env:DOWNLOAD_URL) { throw "URL publique incorrecte" }
+
+          $download = Join-Path $env:RUNNER_TEMP $env:FILE_NAME
+          Invoke-WebRequest $env:DOWNLOAD_URL -OutFile $download
+          $downloaded = Get-Item $download
+          $downloadedSha256 = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($downloaded.Length -ne [int64]$env:EXPECTED_SIZE) { throw "Taille téléchargée incorrecte" }
+          if ($downloadedSha256 -ne $env:EXPECTED_SHA256) { throw "SHA-256 téléchargé incorrect" }
+          Write-Host "PUBLICATION VÉRIFIÉE : $env:DOWNLOAD_URL"
+          Write-Host "Taille : $($downloaded.Length) octets"
+          Write-Host "SHA-256 : $downloadedSha256"
