@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "cards",
   "name": "Module Cartes",
-  "version": "0.5.3.13",
+  "version": "0.5.3.14",
   "description": "Conception de cartes au format TCG dans un éditeur visuel.",
-  "fileName": "EF-Workshop-Cartes-v0.5.3.13.exe",
-  "size": 14296064,
-  "sha256": "072c89870c16c6dd6c187b3346a7bbf27310a4b3bf45264ba5ff628914280e1d",
+  "fileName": "EF-Workshop-Cartes-v0.5.3.14.exe",
+  "size": 10212864,
+  "sha256": "f77966f25718f34d968317010f8daa4bcf573b7aea689ae37b11244b1da8bc6d",
   "executable": "EF-Workshop-Cartes.exe",
   "minWorkshopVersion": "0.1.0.0",
   "license": null,
   "source": {
     "provider": "github-release",
     "manifestUrl": "https://raw.githubusercontent.com/Berrylium-Baldoon/endgame-factory-workshop-releases/main/manifests/cards.json",
-    "downloadUrl": "https://github.com/Berrylium-Baldoon/endgame-factory-workshop-releases/releases/download/cards-v0.5.3.13/EF-Workshop-Cartes-v0.5.3.13.exe"
+    "downloadUrl": "https://github.com/Berrylium-Baldoon/endgame-factory-workshop-releases/releases/download/cards-v0.5.3.14/EF-Workshop-Cartes-v0.5.3.14.exe"
   }
 }
