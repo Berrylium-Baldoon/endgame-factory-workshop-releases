@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "boards",
+  "name": "Surfaces",
+  "version": "0.1.0",
+  "description": "Création et assemblage de surfaces de jeu en millimètres.",
+  "fileName": "EndGame-Factory-Workshop-Surfaces-v0.1.0.exe",
+  "size": 14455808,
+  "sha256": "d2ed9374d2c7e9ff289b8375ab0e91fb01eaa9194285440659af4fa7693e0a60",
+  "executable": "EndGame-Factory-Workshop-Surfaces.exe",
+  "minWorkshopVersion": "0.1.0.5",
+  "license": null,
+  "source": {
+    "provider": "github-release",
+    "manifestUrl": "https://raw.githubusercontent.com/Berrylium-Baldoon/endgame-factory-workshop-releases/main/manifests/boards.json",
+    "downloadUrl": "https://github.com/Berrylium-Baldoon/endgame-factory-workshop-releases/releases/download/surfaces-v0.1.0/EndGame-Factory-Workshop-Surfaces-v0.1.0.exe"
+  }
+}
