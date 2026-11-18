@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "library",
+  "name": "Bibliothèque",
+  "version": "0.1.0",
+  "description": "Catalogue officiel et gestion des ressources graphiques EFW.",
+  "fileName": "EF-Workshop-Bibliotheque-v0.1.0.exe",
+  "size": 12405248,
+  "sha256": "bead70da725292af278078ddec93e286e97d109c16392bd905af37c4dd03052c",
+  "executable": "EndGame-Factory-Workshop-Bibliotheque.exe",
+  "minWorkshopVersion": "0.1.0.9",
+  "license": null,
+  "source": {
+    "provider": "github-release",
+    "manifestUrl": "https://raw.githubusercontent.com/Berrylium-Baldoon/endgame-factory-workshop-releases/main/manifests/library.json",
+    "downloadUrl": "https://github.com/Berrylium-Baldoon/endgame-factory-workshop-releases/releases/download/library-v0.1.0/EF-Workshop-Bibliotheque-v0.1.0.exe"
+  }
+}
